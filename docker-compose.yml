@@ -1,0 +1,53 @@
+version: '3.8'
+
+services:
+  backend:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    ports:
+      - '3000:3000'
+    env_file:
+      - .env
+    # TODO: 添加 depends_on（mongodb + redis，condition: service_healthy）
+    networks:
+      - app-network
+    restart: unless-stopped
+
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile   # TODO: 创建 frontend/Dockerfile
+    ports:
+      - '3001:3001'
+    # TODO: 添加 NEXT_PUBLIC_BACKEND_URL / NEXT_PUBLIC_WS_URL 环境变量
+    # TODO: 添加 depends_on backend
+    networks:
+      - app-network
+    restart: unless-stopped
+
+  mongodb:
+    image: mongo:7
+    ports:
+      - '27017:27017'
+    # TODO: 添加数据卷持久化 volumes
+    networks:
+      - app-network
+    # TODO: 添加 healthcheck（mongosh --eval 'db.adminCommand("ping")'）
+    restart: unless-stopped
+
+  redis:
+    image: redis:7-alpine
+    ports:
+      - '6379:6379'
+    # TODO: 添加数据卷持久化 volumes
+    networks:
+      - app-network
+    # TODO: 添加 healthcheck（redis-cli ping）
+    restart: unless-stopped
+
+# TODO: 定义 volumes（mongodb_data / redis_data）
+
+networks:
+  app-network:
+    driver: bridge
