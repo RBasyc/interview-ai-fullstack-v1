@@ -9,7 +9,16 @@ services:
       - '3000:3000'
     env_file:
       - .env
-    # TODO: 添加 depends_on（mongodb + redis，condition: service_healthy）
+    depends_on:
+      mongodb:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    healthcheck:
+      test: ['CMD', 'wget', '--spider', '-q', 'http://localhost:3000/health']
+      interval: 10s
+      timeout: 5s
+      retries: 5
     networks:
       - app-network
     restart: unless-stopped
@@ -17,11 +26,19 @@ services:
   frontend:
     build:
       context: ./frontend
-      dockerfile: Dockerfile   # TODO: 创建 frontend/Dockerfile
+      dockerfile: Dockerfile
+      # 浏览器从宿主机访问 backend，用 localhost:3000（非服务名）
+      args:
+        NEXT_PUBLIC_BACKEND_URL: http://localhost:3000
+        NEXT_PUBLIC_WS_URL: ws://localhost:3000
     ports:
       - '3001:3001'
-    # TODO: 添加 NEXT_PUBLIC_BACKEND_URL / NEXT_PUBLIC_WS_URL 环境变量
-    # TODO: 添加 depends_on backend
+    environment:
+      - NEXT_PUBLIC_BACKEND_URL=http://localhost:3000
+      - NEXT_PUBLIC_WS_URL=ws://localhost:3000
+    depends_on:
+      backend:
+        condition: service_healthy
     networks:
       - app-network
     restart: unless-stopped
@@ -30,23 +47,35 @@ services:
     image: mongo:7
     ports:
       - '27017:27017'
-    # TODO: 添加数据卷持久化 volumes
+    volumes:
+      - mongodb_data:/data/db
+    healthcheck:
+      test: ['CMD', 'mongosh', '--quiet', '--eval', "db.adminCommand('ping')"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
     networks:
       - app-network
-    # TODO: 添加 healthcheck（mongosh --eval 'db.adminCommand("ping")'）
     restart: unless-stopped
 
   redis:
     image: redis:7-alpine
     ports:
       - '6379:6379'
-    # TODO: 添加数据卷持久化 volumes
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ['CMD', 'redis-cli', 'ping']
+      interval: 10s
+      timeout: 5s
+      retries: 5
     networks:
       - app-network
-    # TODO: 添加 healthcheck（redis-cli ping）
     restart: unless-stopped
 
-# TODO: 定义 volumes（mongodb_data / redis_data）
+volumes:
+  mongodb_data:
+  redis_data:
 
 networks:
   app-network:

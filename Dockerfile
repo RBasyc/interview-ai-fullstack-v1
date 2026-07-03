@@ -1,15 +1,17 @@
-FROM node:alpine
+FROM node:18-alpine
 
-RUN mkdir -p /usr/src/node-app && chown -R node:node /usr/src/node-app
+# 使用 pnpm（本仓库为 pnpm 工作区，非 yarn）
+RUN corepack enable
 
 WORKDIR /usr/src/node-app
 
-COPY package.json yarn.lock ./
+# 先拷贝 lockfile 以利用构建缓存
+COPY package.json pnpm-lock.yaml ./
+RUN pnpm install --frozen-lockfile
 
-USER node
-
-RUN yarn install --pure-lockfile
-
-COPY --chown=node:node . .
+COPY . .
 
 EXPOSE 3000
+
+# 单进程内同时启动 HTTP + WebSocket + BullMQ worker
+CMD ["node", "src/index.js"]
