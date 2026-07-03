@@ -9,6 +9,10 @@ services:
       - '3000:3000'
     env_file:
       - .env
+    environment:
+      # 覆盖 .env：容器间必须用服务名，禁止 localhost（本机 dev 用 .env 里的 localhost）
+      - MONGODB_URL=mongodb://mongodb:27017/interview
+      - REDIS_URL=redis://redis:6379
     depends_on:
       mongodb:
         condition: service_healthy
