@@ -1,7 +1,11 @@
-// eslint-disable-next-line no-unused-vars
 const { v4: uuidv4 } = require('uuid');
 const { Queue } = require('bullmq');
+const httpStatus = require('http-status');
 const config = require('../config/config');
+const ApiError = require('../utils/ApiError');
+const billingService = require('./billingService');
+const Job = require('../models/job.model');
+const { PHASES } = require('../../workers/jobWorker');
 
 const JOB_QUEUE_NAME = 'job-pipeline';
 
@@ -31,8 +35,14 @@ const getQueue = () => {
  */
 // eslint-disable-next-line no-unused-vars
 const submit = async (tenantId, payload) => {
-  // TODO: 实现完整的任务提交流程
-  return { jobId: 'NOT_IMPLEMENTED' };
+  const billing = await billingService.deduct(tenantId);
+  if (!billing.ok) {
+    throw new ApiError(httpStatus.PAYMENT_REQUIRED, 'Insufficient balance');
+  }
+  const jobId = uuidv4();
+  await getQueue().add(jobId, { jobId, tenantId, phases: PHASES });
+  await Job.create({ jobId, tenantId, status: 'queued', phases: [] });
+  return { jobId };
 };
 
 /**
@@ -46,10 +56,9 @@ const submit = async (tenantId, payload) => {
  * @param {string} tenantId
  * @returns {Promise<Job|null>}
  */
-// eslint-disable-next-line no-unused-vars
 const getJob = async (jobId, tenantId) => {
-  // TODO: 实现带租户隔离的 Job 查询
-  return null;
+  // 租户隔离：必须同时按 jobId + tenantId 查询
+  return Job.findOne({ jobId, tenantId });
 };
 
 module.exports = { submit, getJob, JOB_QUEUE_NAME, getQueue };
