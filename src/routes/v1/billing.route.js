@@ -1,6 +1,8 @@
 const express = require('express');
 const passport = require('passport');
 const requireTenant = require('../../middlewares/requireTenant');
+const catchAsync = require('../../utils/catchAsync');
+const billingService = require('../../services/billingService');
 
 const router = express.Router();
 
@@ -14,9 +16,14 @@ const auth = passport.authenticate('jwt', { session: false });
  * 2. 调用 billingService.getBalance(req.tenantId)
  * 3. 返回 { tenantId: req.tenantId, balance: <number> }
  */
-router.get('/balance', auth, requireTenant, (req, res) => {
-  // TODO: 实现余额查询
-  res.send({ tenantId: req.tenantId || 'NOT_IMPLEMENTED', balance: -1 });
-});
+router.get(
+  '/balance',
+  auth,
+  requireTenant,
+  catchAsync(async (req, res) => {
+    const balance = await billingService.getBalance(req.tenantId);
+    res.send({ tenantId: req.tenantId, balance });
+  })
+);
 
 module.exports = router;

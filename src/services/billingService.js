@@ -2,6 +2,16 @@ const { getClient } = require('../lib/redisClient');
 
 const COST_PER_JOB = 10;
 
+// 单条 Lua 脚本：原子读取余额→判断→DECRBY，禁止 GET-then-SET
+// 余额不足返回 -1，否则返回扣费后的新余额
+const DEDUCT_LUA = `
+local bal = tonumber(redis.call('GET', KEYS[1]) or 0)
+if bal < tonumber(ARGV[1]) then return -1 end
+return redis.call('DECRBY', KEYS[1], ARGV[1])
+`;
+
+const key = (tenantId) => `billing:${tenantId}`;
+
 /**
  * Atomically deduct points from tenant balance using Lua script
  *
@@ -20,12 +30,13 @@ const COST_PER_JOB = 10;
  * @param {number} points - default COST_PER_JOB (10)
  * @returns {Promise<{ok: boolean, balance?: number, reason?: string}>}
  */
-// eslint-disable-next-line no-unused-vars
 const deduct = async (tenantId, points = COST_PER_JOB) => {
-  // TODO: 实现 Lua 原子扣费
-  // Use getClient() to access Redis client for implementation
-  getClient();
-  return { ok: false, reason: 'NOT_IMPLEMENTED' };
+  const client = getClient();
+  const result = await client.eval(DEDUCT_LUA, 1, key(tenantId), points);
+  if (Number(result) === -1) {
+    return { ok: false, reason: 'INSUFFICIENT' };
+  }
+  return { ok: true, balance: Number(result) };
 };
 
 /**
@@ -34,12 +45,10 @@ const deduct = async (tenantId, points = COST_PER_JOB) => {
  * @param {string} tenantId
  * @returns {Promise<number>}
  */
-// eslint-disable-next-line no-unused-vars
 const getBalance = async (tenantId) => {
-  // TODO: 从 Redis 读取 billing:{tenantId} 的值
-  // Use getClient() to access Redis client for implementation
-  getClient();
-  return 0;
+  const client = getClient();
+  const value = await client.get(key(tenantId));
+  return Number(value) || 0;
 };
 
 /**
@@ -48,11 +57,12 @@ const getBalance = async (tenantId) => {
  *
  * @param {Object} tenants - { "tenant-001": 100, ... }
  */
-// eslint-disable-next-line no-unused-vars
 const seed = async (tenants) => {
-  // TODO: 对每个 tenantId，使用 SET billing:{tenantId} <value> NX
-  // Use getClient() to access Redis client for implementation
-  getClient();
+  const client = getClient();
+  // 幂等播种：仅当 key 不存在时写入（SET ... NX）
+  await Promise.all(
+    Object.entries(tenants || {}).map(([tenantId, value]) => client.set(key(tenantId), value, 'NX'))
+  );
 };
 
 module.exports = { deduct, getBalance, seed, COST_PER_JOB };
