@@ -1,6 +1,4 @@
-// eslint-disable-next-line no-unused-vars
 const httpStatus = require('http-status');
-// eslint-disable-next-line no-unused-vars
 const ApiError = require('../utils/ApiError');
 
 /**
@@ -14,8 +12,13 @@ const ApiError = require('../utils/ApiError');
  * ⚠️ 禁止从 req.body / req.query / req.headers['x-tenant-id'] 取值
  */
 const requireTenant = (req, res, next) => {
-  // TODO: 实现租户提取逻辑
-  next();
+  // 仅从 JWT claim（req.user.tenantId）读取，禁止 body/query/header
+  const tenantId = req.user && req.user.tenantId;
+  if (!tenantId) {
+    return next(new ApiError(httpStatus.UNAUTHORIZED, 'Tenant required'));
+  }
+  req.tenantId = tenantId;
+  return next();
 };
 
 module.exports = requireTenant;
