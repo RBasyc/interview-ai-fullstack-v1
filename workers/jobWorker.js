@@ -1,9 +1,12 @@
 const { Worker } = require('bullmq');
 const config = require('../src/config/config');
 const eventBus = require('../src/lib/eventBus');
+const Job = require('../src/models/job.model');
 
 const PHASES = ['preprocess', 'transform', 'build', 'package'];
 const PHASE_DELAY_MS = 3000;
+
+const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
 /**
  * BullMQ Worker: 处理 job-pipeline 队列中的任务
@@ -24,16 +27,39 @@ const PHASE_DELAY_MS = 3000;
  * 5. 发生错误时更新 Job.status = 'failed' 并 eventBus.emit 带 status: 'failed'
  */
 const processJob = async (job) => {
-  // TODO: 实现 4-Phase 流水线处理逻辑
   const { jobId } = job.data;
-  // eslint-disable-next-line no-void
-  void jobId;
-  // eslint-disable-next-line no-void
-  void PHASES;
-  // eslint-disable-next-line no-void
-  void PHASE_DELAY_MS;
-  // eslint-disable-next-line no-void
-  void eventBus;
+  try {
+    await Job.updateOne({ jobId }, { status: 'processing' });
+
+    for (let i = 0; i < PHASES.length; i += 1) {
+      const phaseName = PHASES[i];
+      // eslint-disable-next-line no-await-in-loop
+      await sleep(PHASE_DELAY_MS);
+      // eslint-disable-next-line no-await-in-loop
+      await Job.updateOne(
+        { jobId },
+        { $push: { phases: { name: phaseName, status: 'completed', completedAt: new Date() } } }
+      );
+      eventBus.emit(`job:${jobId}`, {
+        jobId,
+        phase: phaseName,
+        status: 'completed',
+        progress: Math.round(((i + 1) / PHASES.length) * 100),
+        log: `Phase ${phaseName} completed`,
+      });
+    }
+
+    await Job.updateOne({ jobId }, { status: 'completed', completedAt: new Date() });
+  } catch (err) {
+    await Job.updateOne({ jobId }, { status: 'failed' });
+    eventBus.emit(`job:${jobId}`, {
+      jobId,
+      status: 'failed',
+      progress: 0,
+      log: `Job failed: ${err.message}`,
+    });
+    throw err;
+  }
 };
 
 /**
