@@ -60,9 +60,7 @@ const getBalance = async (tenantId) => {
 const seed = async (tenants) => {
   const client = getClient();
   // 幂等播种：仅当 key 不存在时写入（SET ... NX）
-  await Promise.all(
-    Object.entries(tenants || {}).map(([tenantId, value]) => client.set(key(tenantId), value, 'NX'))
-  );
+  await Promise.all(Object.entries(tenants || {}).map(([tenantId, value]) => client.set(key(tenantId), value, 'NX')));
 };
 
 module.exports = { deduct, getBalance, seed, COST_PER_JOB };
