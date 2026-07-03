@@ -50,6 +50,11 @@ if (config.env === 'production') {
   app.use('/v1/auth', authLimiter);
 }
 
+// health check endpoint (used by docker compose healthcheck)
+app.get('/health', (req, res) => {
+  res.status(httpStatus.OK).send({ status: 'ok' });
+});
+
 // v1 api routes
 app.use('/v1', routes);
 
