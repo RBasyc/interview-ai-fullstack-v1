@@ -2,6 +2,7 @@ const WebSocket = require('ws');
 const jwt = require('jsonwebtoken');
 const config = require('../config/config');
 const eventBus = require('./eventBus');
+const Job = require('../models/job.model');
 
 /**
  * Attach WebSocket server to an existing HTTP server
@@ -22,18 +23,57 @@ const eventBus = require('./eventBus');
  * @returns {WebSocket.Server}
  */
 const attachWsServer = (server) => {
-  // TODO: 实现 WebSocket 服务端
-  // eslint-disable-next-line no-void
-  void server;
-  // eslint-disable-next-line no-void
-  void jwt;
-  // eslint-disable-next-line no-void
-  void config;
-  // eslint-disable-next-line no-void
-  void eventBus;
-  // eslint-disable-next-line no-void
-  void WebSocket;
-  return null;
+  const wss = new WebSocket.Server({ server });
+
+  wss.on('connection', async (ws, request) => {
+    try {
+      // URL 格式：/ws/job/:jobId?token=<jwt>
+      const parsed = new URL(request.url, 'http://localhost');
+      const match = parsed.pathname.match(/^\/ws\/job\/([^/]+)$/);
+      const jobId = match && match[1];
+      const token = parsed.searchParams.get('token');
+
+      if (!jobId || !token) {
+        ws.close(4001, 'Unauthorized');
+        return;
+      }
+
+      // token 从 query 读取并验证；失败一律 close 4001
+      let payload;
+      try {
+        payload = jwt.verify(token, config.jwt.secret);
+      } catch (err) {
+        ws.close(4001, 'Unauthorized');
+        return;
+      }
+
+      // 租户隔离：确认该 job 属于 token 所属租户
+      const job = await Job.findOne({ jobId, tenantId: payload.tenantId });
+      if (!job) {
+        ws.close(4001, 'Unauthorized');
+        return;
+      }
+
+      const listener = (event) => {
+        if (ws.readyState === WebSocket.OPEN) {
+          ws.send(JSON.stringify(event));
+        }
+        if (event.progress === 100) {
+          setTimeout(() => ws.close(), 500);
+        }
+      };
+      eventBus.on(`job:${jobId}`, listener);
+
+      // 断开时移除监听器，防止内存泄漏
+      ws.on('close', () => {
+        eventBus.off(`job:${jobId}`, listener);
+      });
+    } catch (err) {
+      ws.close(4001, 'Unauthorized');
+    }
+  });
+
+  return wss;
 };
 
 module.exports = { attachWsServer };
